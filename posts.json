@@ -70,16 +70,21 @@
       "date": "2025-01-17",
       "author": "Ari",
       "image": "static/covers/jayan-vijayan-cover.jpg",
-      "category": "deepobserving"
+      "category": "deepobserving",
+      "translation": "yes"
     },
     {
       "id": "2025-10-26-ஓய்வு-நாள்",
       "title": "ஓய்வு நாள்",
+      "title_english": "Rest Day",
       "excerpt": "ஆவியில் நிரம்பும் நாள் தரும் ஆனந்த நினைவுகள்.",
+      "excerpt_english":  "Rest day filled with joy and memories.",
       "date": "2025-10-26",
       "author": "Ari",
       "image": "static/covers/oyvu-naal.png",
-      "category": "deeploving"
+      "category": "deeploving",
+      "translation": "yes",
+      "translated_content": "posts/translations/2025-10-26-rest-day.md"
     }
   ]
 }

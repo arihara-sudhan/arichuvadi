@@ -4,6 +4,8 @@ class BlogApp {
         this.currentPost = null;
         this.comments = {};
         this.currentTopic = 'all';
+        this.explanations = {};
+        this.activeExplanations = {};
         
         this.init();
     }
@@ -13,6 +15,7 @@ class BlogApp {
         this.setupEventListeners();
         this.handleRouting();
         this.loadPosts();
+        this.loadExplanations();
     }
 
     loadData() {
@@ -31,6 +34,35 @@ class BlogApp {
     saveData() {
         localStorage.setItem('blogPosts', JSON.stringify(this.posts));
         localStorage.setItem('blogComments', JSON.stringify(this.comments));
+    }
+
+    async loadExplanations() {
+        try {
+            const response = await fetch('explanations.json');
+            if (response.ok) {
+                const data = await response.json();
+
+                if (Array.isArray(data)) {
+                    this.explanations = data;
+                } else if (data && typeof data === 'object') {
+                    // Backward compatibility for the older keyed-object format.
+                    this.explanations = Object.entries(data)
+                        .filter(([, value]) => value && typeof value === 'object')
+                        .map(([key, value]) => ({
+                            words: key.split('|').map(word => word.trim()).filter(Boolean),
+                            ...value
+                        }));
+                } else {
+                    this.explanations = [];
+                }
+            } else {
+                console.warn('Could not load explanations.json:', response.status);
+                this.explanations = [];
+            }
+        } catch (error) {
+            console.warn('Error loading explanations.json:', error);
+            this.explanations = [];
+        }
     }
 
     setupEventListeners() {
@@ -178,6 +210,159 @@ class BlogApp {
         this.navigateToPost(postId);
     }
 
+    setupTranslateButton(post) {
+        const translateBtn = document.getElementById('translate-btn');
+        if (!translateBtn) return;
+
+        if (post && post.translation && post.translation.toString().toLowerCase() === 'yes') {
+            translateBtn.style.display = 'inline-block';
+            const isEnglish = !!post.isEnglish;
+            translateBtn.setAttribute('aria-label', isEnglish ? 'Show Tamil original' : 'Show English translation');
+            translateBtn.setAttribute('title', isEnglish ? 'Show Tamil original' : 'Show English translation');
+
+            translateBtn.onclick = async () => {
+                const currentlyEnglish = !!post.isEnglish;
+                if (currentlyEnglish) {
+                    post.isEnglish = false;
+                    this.renderPost(post);
+                    return;
+                }
+
+                if (post.translatedContent) {
+                    post.isEnglish = true;
+                    this.renderPost(post);
+                    return;
+                }
+
+                if (!post.translated_content) {
+                    alert('Translation source not available for this post yet.');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(post.translated_content);
+                    if (!response.ok) {
+                        throw new Error(`Could not load translation: ${response.status}`);
+                    }
+                    const raw = await response.text();
+                    const parsed = this.parseMarkdownPost(raw, post.id);
+                    post.translatedContent = parsed.content;
+
+                    if (!post.title_english) {
+                        post.title_english = parsed.title || post.title;
+                    }
+
+                    post.isEnglish = true;
+                    this.renderPost(post);
+                } catch (error) {
+                    console.error('Translation load failed:', error);
+                    alert('Failed to load translated content.');
+                }
+            };
+        } else {
+            translateBtn.style.display = 'none';
+            translateBtn.setAttribute('aria-label', 'Translate post');
+            translateBtn.setAttribute('title', 'Translate post');
+            translateBtn.onclick = null;
+        }
+    }
+
+    applyExplanations(content, language, post) {
+        const entries = Array.isArray(this.explanations) ? this.explanations : [];
+        this.activeExplanations = {};
+        let explanationIndex = 0;
+
+        const normalizedEntries = entries.filter(entry =>
+            entry &&
+            typeof entry === 'object' &&
+            Array.isArray(entry.words)
+        );
+
+        return content.replace(/<qn>([\s\S]*?)<\/qn>/gu, (_, rawTerm) => {
+            const target = rawTerm.trim();
+            if (!target) return rawTerm;
+
+            const entry = normalizedEntries.find(item =>
+                item.words.some(word =>
+                    typeof word === 'string' &&
+                    word.trim().localeCompare(target, undefined, { sensitivity: 'accent' }) === 0
+                )
+            );
+
+            if (!entry) {
+                return target;
+            }
+
+            const explanationId = `expl-${explanationIndex++}`;
+            this.activeExplanations[explanationId] = {
+                ...entry,
+                _id: explanationId,
+                _target: target
+            };
+
+            return `<span class="expl-term" data-expl-id="${explanationId}">${target}<sup>?</sup></span>`;
+        });
+    }
+
+    setupExplanationLinks(language) {
+        const explainCard = document.getElementById('explain-card');
+        const explainCardContent = document.getElementById('explain-card-content');
+        const closeBtn = document.getElementById('explain-card-close');
+
+        if (!explainCard || !explainCardContent || !closeBtn) return;
+
+        document.querySelectorAll('.expl-term').forEach((el) => {
+            el.addEventListener('click', () => {
+                const id = el.getAttribute('data-expl-id');
+                if (!id) return;
+
+                const entry = Object.values(this.activeExplanations || {}).find(e => e._id === id);
+                if (!entry) return;
+
+                document.querySelectorAll('.expl-term').forEach(x => x.classList.remove('active'));
+                el.classList.add('active');
+
+                const imageHtml = entry.image ? `<img class="explain-card-image" src="static/explanation_images/${entry.image}" alt="${entry[language]||''}"/>` : '';
+                const text = entry[language] || 'No explanation found';
+
+                explainCardContent.innerHTML = `${imageHtml}<p>${text}</p>`;
+                explainCard.hidden = false;
+                explainCard.classList.add('visible');
+            });
+        });
+
+        closeBtn.onclick = () => {
+            explainCard.hidden = true;
+            explainCard.classList.remove('visible');
+        };
+
+        document.addEventListener('click', (event) => {
+            if (!explainCard.classList.contains('visible')) return;
+            const target = event.target;
+            if (target.closest('.explain-card') || target.closest('.expl-term')) return;
+
+            explainCard.hidden = true;
+            explainCard.classList.remove('visible');
+        });
+
+        window.addEventListener('scroll', () => {
+            if (!explainCard.classList.contains('visible')) return;
+
+            const activeTerm = document.querySelector('.expl-term.active');
+            if (!activeTerm) {
+                explainCard.hidden = true;
+                explainCard.classList.remove('visible');
+                return;
+            }
+
+            const rect = activeTerm.getBoundingClientRect();
+            if (rect.bottom < 0 || rect.top > window.innerHeight) {
+                explainCard.hidden = true;
+                explainCard.classList.remove('visible');
+            }
+        }, { passive: true });
+    }
+
     parseMarkdownPost(content, postId) {
         const lines = content.split('\n');
         let title = '';
@@ -239,17 +424,27 @@ class BlogApp {
 
     renderPost(post) {
         const postTitleElement = document.getElementById('post-title');
-        postTitleElement.textContent = post.title;
+        const isEnglish = post.isEnglish;
+        postTitleElement.textContent = isEnglish
+            ? (post.title_english || post.title)
+            : post.title;
         
         // Add hr after title if it doesn't exist
-        if (!postTitleElement.nextElementSibling || !postTitleElement.nextElementSibling.tagName === 'HR') {
+        const nextEl = postTitleElement.nextElementSibling;
+        if (!nextEl || nextEl.tagName !== 'HR') {
             const hr = document.createElement('hr');
             postTitleElement.parentNode.insertBefore(hr, postTitleElement.nextSibling);
         }
         
-        const htmlContent = marked.parse(post.content);
-        document.getElementById('post-content').innerHTML = htmlContent;
-        
+        const contentToRender = isEnglish
+            ? (post.translatedContent || post.content)
+            : post.content;
+
+        const annotatedContent = this.applyExplanations(contentToRender, isEnglish ? 'english' : 'tamil', post);
+        document.getElementById('post-content').innerHTML = marked.parse(annotatedContent);
+
+        this.setupTranslateButton(post);
+        this.setupExplanationLinks(isEnglish ? 'english' : 'tamil');
         this.initGiscus();
         
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AriZone</title>
+    <link rel="icon" href="static/logo.png" type="image/png">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
 </head>
@@ -44,6 +45,9 @@
         <div id="post-page" class="page">
             <div class="container container-narrow">
                 <div class="post-header">
+                    <button id="translate-btn" class="translate-btn" style="display:none;" aria-label="Translate post" title="Translate post">
+                        <img src="static/translate.png" alt="" class="translate-btn-icon">
+                    </button>
                     <h1 id="post-title"></h1>
                 </div>
                 
@@ -64,6 +68,11 @@
             <p>&copy; 2024 <a href="#" onclick="blogApp.navigateToPage('home')" class="footer-blog-link">AriZone</a> | <a href="https://arihara-sudhan.github.io" target="_blank">Ariharasudhan</a></p>
         </div>
     </footer>
+
+    <div id="explain-card" class="explain-card" aria-live="polite" hidden>
+        <button id="explain-card-close" class="explain-card-close">✕</button>
+        <div id="explain-card-content" class="explain-card-content"></div>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
