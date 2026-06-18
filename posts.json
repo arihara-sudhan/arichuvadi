@@ -3,27 +3,130 @@
     {
       "id": "2025-01-17-ஜெயன்-விஜயன்",
       "title": "ஜெயன் விஜயன்",
-      "excerpt": "Jaya and Vijaya temple guardians and their biblical connections.",
       "date": "2025-01-17",
-      "author": "Ari",
-      "folder": "posts/jayan_vijayan",
-      "image": "images/cover.jpg",
-      "category": "katturaigal",
-      "translation": "yes"
+      "folder": "katturaigal/jayan_vijayan",
+      "translation": "yes",
+      "imagePath": "posts/katturaigal/jayan_vijayan/images/cover.jpg"
     },
     {
       "id": "2025-10-26-ஓய்வு-நாள்",
       "title": "ஓய்வு நாள்",
-      "title_english": "Rest Day",
-      "excerpt": "ஆவியில் நிரம்பும் நாள் தரும் ஆனந்த நினைவுகள்.",
-      "excerpt_english":  "Rest day filled with joy and memories.",
       "date": "2025-10-26",
-      "author": "Ari",
-      "folder": "posts/oyvu_naal",
-      "image": "images/cover.png",
-      "category": "katturaigal",
+      "folder": "katturaigal/oyvu_naal",
       "translation": "yes",
-      "translated_content": "translation.md"
+      "imagePath": "posts/katturaigal/oyvu_naal/images/cover.png"
+    },
+    {
+      "id": "kathal",
+      "title": "காதல்",
+      "date": "2026-01-16",
+      "folder": "kavithaigal/kathal",
+      "imagePath": "posts/kavithaigal/kathal/kathal.webp"
+    },
+    {
+      "id": "unakkenave-naan",
+      "title": "உனக்கெனவே நான்",
+      "date": "2026-01-15",
+      "folder": "kavithaigal/unakkenave-naan",
+      "imagePath": "posts/kavithaigal/unakkenave-naan/unakkenave-naan.webp"
+    },
+    {
+      "id": "aval",
+      "title": "அவள்",
+      "date": "2026-01-14",
+      "folder": "kavithaigal/aval",
+      "imagePath": "posts/kavithaigal/aval/aval.webp"
+    },
+    {
+      "id": "nilavinum_azhagiya_mugam",
+      "title": "நிலவினும் அழகிய முகம்",
+      "date": "2026-01-13",
+      "folder": "kavithaigal/nilavinum_azhagiya_mugam",
+      "imagePath": "posts/kavithaigal/nilavinum_azhagiya_mugam/nilavinum_azhagiya_mugam.webp"
+    },
+    {
+      "id": "mazhai",
+      "title": "மழை",
+      "date": "2026-01-12",
+      "folder": "kavithaigal/mazhai",
+      "imagePath": "posts/kavithaigal/mazhai/mazhai.webp"
+    },
+    {
+      "id": "anbu",
+      "title": "அன்பு",
+      "date": "2026-01-11",
+      "folder": "kavithaigal/anbu",
+      "imagePath": "posts/kavithaigal/anbu/anbu.webp"
+    },
+    {
+      "id": "aval-2",
+      "title": "அவள்",
+      "date": "2026-01-10",
+      "folder": "kavithaigal/aval-2",
+      "imagePath": "posts/kavithaigal/aval-2/aval-2.webp"
+    },
+    {
+      "id": "kraamaththu-kaathali",
+      "title": "கிராமத்து காதலி",
+      "date": "2026-01-09",
+      "folder": "kavithaigal/kraamaththu-kaathali",
+      "imagePath": "posts/kavithaigal/kraamaththu-kaathali/kraamaththu-kaathali.webp"
+    },
+    {
+      "id": "ambasamudram",
+      "title": "அம்பாசமுத்திரம்",
+      "date": "2026-01-08",
+      "folder": "kavithaigal/ambasamudram",
+      "imagePath": "posts/kavithaigal/ambasamudram/ambasamudram.webp"
+    },
+    {
+      "id": "tenkasi-visuwanatham",
+      "title": "தென்காசி விசுவநாதம்",
+      "date": "2026-01-07",
+      "folder": "kavithaigal/tenkasi-visuwanatham",
+      "imagePath": "posts/kavithaigal/tenkasi-visuwanatham/tenkasi-visuwanatham.webp"
+    },
+    {
+      "id": "meelgiren",
+      "title": "மீள்கிறேன்",
+      "date": "2026-01-06",
+      "folder": "kavithaigal/meelgiren",
+      "imagePath": "posts/kavithaigal/meelgiren/meelgiren.webp"
+    },
+    {
+      "id": "kanavu",
+      "title": "கனவு",
+      "date": "2026-01-05",
+      "folder": "kavithaigal/kanavu",
+      "imagePath": "posts/kavithaigal/kanavu/kanavu.webp"
+    },
+    {
+      "id": "kuzhappam",
+      "title": "குழப்பம்",
+      "date": "2026-01-04",
+      "folder": "kavithaigal/kuzhappam",
+      "imagePath": "posts/kavithaigal/kuzhappam/kuzhappam.webp"
+    },
+    {
+      "id": "annan-thangai",
+      "title": "அண்ணன் தங்கை",
+      "date": "2026-01-03",
+      "folder": "kavithaigal/annan-thangai",
+      "imagePath": "posts/kavithaigal/annan-thangai/annan-thangai.webp"
+    },
+    {
+      "id": "nathi",
+      "title": "நதி",
+      "date": "2026-01-02",
+      "folder": "kavithaigal/nathi",
+      "imagePath": "posts/kavithaigal/nathi/nathi.webp"
+    },
+    {
+      "id": "neelgirathu_yekkam",
+      "title": "நீளுகிறது ஏக்கம்",
+      "date": "2026-01-01",
+      "folder": "kavithaigal/neelgirathu_yekkam",
+      "imagePath": "posts/kavithaigal/neelgirathu_yekkam/neelgirathu_yekkam.webp"
     }
   ]
 }

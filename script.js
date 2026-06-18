@@ -4,6 +4,9 @@ class BlogApp {
         this.currentPost = null;
         this.comments = {};
         this.currentTopic = 'ellam';
+        this.currentPage = 1;
+        this.postsPerPage = 10;
+        this.sortedPostsCache = [];
         this.explanations = [];
         this.explanationIndex = new Map();
         this.activeExplanations = {};
@@ -15,6 +18,9 @@ class BlogApp {
     init() {
         this.loadData();
         this.setupEventListeners();
+        window.addEventListener('popstate', () => {
+            this.handleRouting();
+        });
         this.handleRouting();
         this.explanationsReady = this.loadExplanations();
         this.loadPosts();
@@ -132,13 +138,54 @@ class BlogApp {
             .replace(/\/+$/, '');
     }
 
+    getPostCategory(post) {
+        const explicitCategory = this.normalizeFolderPath(post?.category);
+        if (explicitCategory) {
+            return explicitCategory;
+        }
+
+        const folder = this.normalizeFolderPath(post?.folder || post?.source_folder || post?.directory);
+        if (folder.includes('/')) {
+            return folder.split('/')[0];
+        }
+
+        return '';
+    }
+
+    resolvePostFolderPath(post) {
+        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        if (!folder) {
+            return '';
+        }
+
+        const category = this.getPostCategory(post);
+
+        if (folder.startsWith('posts/')) {
+            const legacyFolder = folder.slice('posts/'.length);
+            if (category && legacyFolder && !legacyFolder.includes('/')) {
+                return `posts/${category}/${legacyFolder}`;
+            }
+            return folder;
+        }
+
+        if (folder.includes('/')) {
+            return `posts/${folder}`;
+        }
+
+        if (category) {
+            return `posts/${category}/${folder}`;
+        }
+
+        return `posts/${folder}`;
+    }
+
     isExternalUrl(value) {
         return /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|data:|mailto:|javascript:)/i.test(String(value ?? ''));
     }
 
     resolveRelativePath(basePath, assetPath) {
         const cleanPath = String(assetPath ?? '').trim();
-        if (!cleanPath || this.isExternalUrl(cleanPath) || cleanPath.startsWith('/')) {
+        if (!cleanPath || this.isExternalUrl(cleanPath) || cleanPath.startsWith('/') || cleanPath.startsWith('posts/')) {
             return cleanPath;
         }
 
@@ -151,16 +198,17 @@ class BlogApp {
     }
 
     resolvePostContentPath(post) {
-        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        const folder = this.resolvePostFolderPath(post);
         if (folder) {
             return `${folder}/content.md`;
         }
 
-        return `posts/${post.id}.md`;
+        const category = this.normalizeFolderPath(post?.category);
+        return category ? `posts/${category}/${post.id}.md` : `posts/${post.id}.md`;
     }
 
     resolvePostTranslationPath(post) {
-        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        const folder = this.resolvePostFolderPath(post);
         const translationPath = post.translated_content || post.translation_content || (folder ? 'translation.md' : '');
 
         if (!translationPath) {
@@ -213,8 +261,54 @@ class BlogApp {
         }));
     }
 
-    resolvePostImage(post, imagePath) {
+    getPostImageCandidates(post) {
         const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        const folderPath = this.resolvePostFolderPath(post);
+        const category = this.getPostCategory(post);
+        const candidates = [];
+
+        if (post.image) {
+            candidates.push(this.resolveRelativePath(folderPath, post.image));
+        }
+
+        if (folder) {
+            const leafName = folder.split('/').pop();
+
+            if (category === 'kavithaigal') {
+                ['webp', 'png', 'jpg', 'jpeg', 'avif'].forEach(ext => {
+                    candidates.push(`${folderPath}/${leafName}.${ext}`);
+                });
+            } else {
+                ['jpg', 'png', 'webp', 'jpeg', 'avif'].forEach(ext => {
+                    candidates.push(`${folderPath}/images/cover.${ext}`);
+                    candidates.push(`${folderPath}/cover.${ext}`);
+                });
+            }
+        }
+
+        return [...new Set(candidates.filter(Boolean))];
+    }
+
+    async annotatePostsWithImagePaths(posts = []) {
+        await Promise.all(posts.map(async (post) => {
+            if (post.imagePath) {
+                return;
+            }
+
+            const candidates = this.getPostImageCandidates(post);
+            for (const candidate of candidates) {
+                if (await this.resourceExists(candidate)) {
+                    post.imagePath = candidate;
+                    return;
+                }
+            }
+
+            post.imagePath = '';
+        }));
+    }
+
+    resolvePostImage(post, imagePath) {
+        const folder = this.resolvePostFolderPath(post);
         return this.resolveRelativePath(folder, imagePath);
     }
 
@@ -228,7 +322,7 @@ class BlogApp {
             return cleanPath;
         }
 
-        const folder = this.normalizeFolderPath(post?.folder || post?.source_folder || post?.directory);
+        const folder = this.resolvePostFolderPath(post);
         if (folder) {
             const relativePath = cleanPath.startsWith('images/') ? cleanPath : `images/${cleanPath}`;
             return this.resolveRelativePath(folder, relativePath);
@@ -255,7 +349,7 @@ class BlogApp {
     }
 
     async loadPostExplanations(post) {
-        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        const folder = this.resolvePostFolderPath(post);
         let mergedEntries = [];
 
         if (folder) {
@@ -343,11 +437,11 @@ class BlogApp {
             kathaigal: 'கதைகள்',
             verchchol: 'வேர்ச்சொல்',
             katturaigal: 'கட்டுரைகள்',
-            kavidhaigal: 'கவிதைகள்'
+            kavithaigal: 'கவிதைகள்'
         };
 
         const availableTopics = Object.keys(topicLabels).filter(topic =>
-            topic !== 'ellam' && this.posts.some(post => post.category === topic)
+            topic !== 'ellam' && this.posts.some(post => this.getPostCategory(post) === topic)
         );
 
         if (this.currentTopic !== 'ellam' && !availableTopics.includes(this.currentTopic)) {
@@ -369,19 +463,62 @@ class BlogApp {
     }
 
     handleRouting() {
-        const hash = window.location.hash.substring(1);
-        
-        if (hash.startsWith('post/')) {
-            const postId = decodeURIComponent(hash.substring(5));
-            this.showPost(postId);
-        } else if (hash === 'about') {
-            this.navigateToPage('about');
-        } else {
-            this.navigateToPage('home');
+        const path = window.location.pathname.replace(/\/+$/, '') || '/';
+        const parts = path.split('/').filter(Boolean);
+        const route = parts[0] || 'all';
+
+        if (route === 'post' && parts[1]) {
+            const postId = decodeURIComponent(parts.slice(1).join('/'));
+            this.showPost(postId, false);
+            return;
+        }
+
+        if (route === 'about') {
+            this.navigateToPage('about', false);
+            return;
+        }
+
+        const topic = this.normalizeRouteTopic(route);
+        this.currentTopic = topic;
+        this.currentPage = 1;
+        this.navigateToPage('home', false);
+
+        if (this.posts.length > 0) {
+            this.renderTopics();
+            this.renderPosts();
+        }
+
+        if (path === '/') {
+            this.updateBrowserPath('/all', true);
         }
     }
 
-    navigateToPage(page) {
+    normalizeRouteTopic(route) {
+        if (!route || route === 'all') {
+            return 'ellam';
+        }
+
+        return route;
+    }
+
+    getTopicPath(topic) {
+        if (!topic || topic === 'ellam') {
+            return '/all';
+        }
+
+        return `/${topic}`;
+    }
+
+    updateBrowserPath(path, replace = false) {
+        const nextPath = path.startsWith('/') ? path : `/${path}`;
+        if (replace) {
+            window.history.replaceState({ path: nextPath }, '', nextPath);
+        } else {
+            window.history.pushState({ path: nextPath }, '', nextPath);
+        }
+    }
+
+    navigateToPage(page, updateUrl = true) {
         document.querySelectorAll('.nav-link').forEach(link => {
             link.classList.remove('active');
             if (link.dataset.page === page) {
@@ -394,17 +531,21 @@ class BlogApp {
 
         if (page === 'home') {
             document.getElementById('home-page').classList.add('active');
-            window.location.hash = '';
+            if (updateUrl) {
+                this.updateBrowserPath(this.getTopicPath(this.currentTopic || 'ellam'));
+            }
         } else if (page === 'about') {
             document.getElementById('about-page').classList.add('active');
-            window.location.hash = 'about';
+            if (updateUrl) {
+                this.updateBrowserPath('/about');
+            }
         }
     }
 
     async loadPosts() {
         try {
             const response = await fetch('posts.json');
-            if (response.ok) {
+        if (response.ok) {
                 const postsData = await response.json();
                 this.posts = postsData.posts;
                 this.saveData();
@@ -413,56 +554,173 @@ class BlogApp {
             console.log('Using default posts or local storage data');
         }
 
-        await this.annotatePostsWithTranslationStatus(this.posts);
+        this.preparePosts(this.posts);
         this.renderTopics();
         this.renderPosts();
     }
 
+    preparePosts(posts = []) {
+        posts.forEach((post) => {
+            post.folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+            post.category = this.getPostCategory(post);
+            post.translationPath = post.translationPath || this.resolvePostTranslationPath(post);
+            post.hasTranslation = String(post.translation || '').toLowerCase() === 'yes';
+        });
+
+        this.sortedPostsCache = [...posts].sort((a, b) => new Date(b.date) - new Date(a.date));
+    }
+
+    getSortedPosts() {
+        if (!Array.isArray(this.sortedPostsCache) || this.sortedPostsCache.length !== this.posts.length) {
+            this.sortedPostsCache = [...this.posts].sort((a, b) => new Date(b.date) - new Date(a.date));
+        }
+
+        return this.sortedPostsCache;
+    }
+
+    getDisplayPosts(topic = this.currentTopic) {
+        const sortedPosts = this.getSortedPosts();
+
+        if (topic !== 'ellam') {
+            return sortedPosts.filter(post => this.getPostCategory(post) === topic);
+        }
+
+        const categoryPriority = {
+            katturaigal: 0,
+            kavithaigal: 1
+        };
+
+        return [...sortedPosts].sort((a, b) => {
+            const categoryA = this.getPostCategory(a);
+            const categoryB = this.getPostCategory(b);
+            const priorityA = categoryPriority.hasOwnProperty(categoryA) ? categoryPriority[categoryA] : 99;
+            const priorityB = categoryPriority.hasOwnProperty(categoryB) ? categoryPriority[categoryB] : 99;
+
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+            }
+
+            return new Date(b.date) - new Date(a.date);
+        });
+    }
+
+    getPostNumber(post, topic = this.currentTopic) {
+        const displayPosts = this.getDisplayPosts(topic);
+        const filteredIndex = displayPosts.findIndex(entry => entry.id === post.id);
+        return filteredIndex >= 0 ? `${filteredIndex + 1}. ` : '';
+    }
+
+    getDisplayTitle(post, fallbackTitle = '', topic = this.currentTopic) {
+        const title = fallbackTitle || post?.title || '';
+        const numberPrefix = this.getPostNumber(post, topic);
+        return `${numberPrefix}${title}`;
+    }
+
     filterByTopic(topic) {
         this.currentTopic = topic;
+        this.currentPage = 1;
+        this.navigateToPage('home', true);
         this.renderTopics();
         this.renderPosts();
     }
 
     renderPosts() {
         const postsGrid = document.getElementById('posts-grid');
+        let pagination = document.getElementById('posts-pagination');
         
         if (this.posts.length === 0) {
             postsGrid.innerHTML = '<div class="empty-state">No posts available</div>';
+            if (pagination) {
+                pagination.innerHTML = '';
+                pagination.hidden = true;
+            }
             return;
         }
 
-        // Sort posts by date in descending order (newest first)
-        const sortedPosts = [...this.posts].sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        const filteredPosts = this.currentTopic === 'ellam' 
-            ? sortedPosts 
-            : sortedPosts.filter(post => post.category === this.currentTopic);
+        const filteredPosts = this.getDisplayPosts(this.currentTopic);
 
         if (filteredPosts.length === 0) {
             postsGrid.innerHTML = '<div class="empty-state">பதிவுகள் இல்லை</div>';
+            if (pagination) {
+                pagination.innerHTML = '';
+                pagination.hidden = true;
+            }
             return;
         }
 
-        postsGrid.innerHTML = filteredPosts.map(post => `
+        const totalPages = Math.max(1, Math.ceil(filteredPosts.length / this.postsPerPage));
+        this.currentPage = Math.min(this.currentPage, totalPages);
+        const startIndex = (this.currentPage - 1) * this.postsPerPage;
+        const visiblePosts = filteredPosts.slice(startIndex, startIndex + this.postsPerPage);
+
+        postsGrid.innerHTML = visiblePosts.map(post => {
+            const imageSource = post.imagePath || post.image || '';
+            const resolvedImage = imageSource ? this.resolvePostImage(post, imageSource) : '';
+            const displayTitle = this.getDisplayTitle(post, '', this.currentTopic);
+
+            return `
             <div class="post-card" onclick="blogApp.showPost('${post.id}')">
-                ${this.resolvePostImage(post, post.image) ? `<img src="${this.escapeHtml(this.resolvePostImage(post, post.image))}" alt="${this.escapeHtml(post.title)}" class="post-card-image">` : ''}
+                ${resolvedImage ? `<img src="${this.escapeHtml(resolvedImage)}" alt="${this.escapeHtml(displayTitle)}" class="post-card-image" loading="lazy" decoding="async" draggable="false">` : ''}
                 <div class="post-card-content">
-                    <h3>${post.title}</h3>
+                    <h3>${displayTitle}</h3>
                     <div class="post-card-meta">
                         <span class="post-card-date">${new Date(post.date).toLocaleDateString()}</span>
                         <span class="post-card-language">${post.hasTranslation ? 'தமிழ் & English' : 'தமிழ்'}</span>
                     </div>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
+
+        if (!pagination) {
+            pagination = document.createElement('div');
+            pagination.id = 'posts-pagination';
+            pagination.className = 'posts-pagination';
+            postsGrid.insertAdjacentElement('afterend', pagination);
+        }
+
+        if (totalPages > 1) {
+            pagination.hidden = false;
+            pagination.innerHTML = `
+                <button class="pagination-btn" data-direction="prev" ${this.currentPage === 1 ? 'disabled' : ''}>
+                    ← முந்தையவை
+                </button>
+                <span class="pagination-status">${this.currentPage} / ${totalPages}</span>
+                <button class="pagination-btn" data-direction="next" ${this.currentPage === totalPages ? 'disabled' : ''}>
+                    அடுத்தவை →
+                </button>
+            `;
+
+            pagination.onclick = (event) => {
+                const btn = event.target.closest('.pagination-btn');
+                if (!btn || btn.disabled) return;
+                this.goToPostsPage(btn.dataset.direction);
+            };
+        } else {
+            pagination.innerHTML = '';
+            pagination.hidden = true;
+            pagination.onclick = null;
+        }
+    }
+
+    goToPostsPage(direction) {
+        const filteredPosts = this.getDisplayPosts(this.currentTopic);
+        const totalPages = Math.max(1, Math.ceil(filteredPosts.length / this.postsPerPage));
+
+        if (direction === 'prev') {
+            this.currentPage = Math.max(1, this.currentPage - 1);
+        } else if (direction === 'next') {
+            this.currentPage = Math.min(totalPages, this.currentPage + 1);
+        }
+
+        this.renderPosts();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     async loadPostFromSource(post) {
         const contentPath = this.resolvePostContentPath(post);
         let content = await this.fetchTextIfAvailable(contentPath);
 
-        if (!content && !this.normalizeFolderPath(post.folder || post.source_folder || post.directory)) {
+        if (!content && !this.resolvePostFolderPath(post)) {
             content = await this.fetchTextIfAvailable(`https://raw.githubusercontent.com/arihara-sudhan/blog/main/posts/${post.id}.md`);
         }
 
@@ -470,20 +728,18 @@ class BlogApp {
             return null;
         }
 
-        const parsedPost = this.parseMarkdownPost(content, post.id);
-        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        const folder = this.resolvePostFolderPath(post);
         const postExplanations = await this.loadPostExplanations(post);
         const translatedContentPath = this.resolvePostTranslationPath(post);
-        const resolvedTitle = parsedPost.title && parsedPost.title !== 'Untitled Post'
-            ? parsedPost.title
-            : post.title;
+        const resolvedTitle = this.extractMarkdownTitle(content) || post.title;
+        const resolvedTranslatedTitle = translatedContentPath ? await this.resolveTranslatedTitle(translatedContentPath, post) : '';
 
         return {
             ...post,
-            ...parsedPost,
-            title: resolvedTitle || parsedPost.title,
+            content,
+            title: resolvedTitle,
+            title_english: resolvedTranslatedTitle || post.title_english,
             folder,
-            image: parsedPost.image || post.image || '',
             assetBasePath: folder,
             translated_content: translatedContentPath || post.translated_content,
             explanationIndex: postExplanations.index,
@@ -491,14 +747,44 @@ class BlogApp {
         };
     }
 
-    async showPost(postId) {
+    extractMarkdownTitle(content) {
+        const lines = String(content ?? '').split('\n');
+        if (lines[0]?.startsWith('---')) {
+            let i = 1;
+            while (i < lines.length && !lines[i].startsWith('---')) {
+                const line = lines[i];
+                if (line.startsWith('title:')) {
+                    return line.substring(6).trim().replace(/['"]/g, '');
+                }
+                i++;
+            }
+        }
+
+        const titleMatch = String(content ?? '').match(/^#\s+(.+)$/m);
+        return titleMatch ? titleMatch[1].trim() : '';
+    }
+
+    async resolveTranslatedTitle(translatedContentPath, post) {
+        try {
+            const raw = await this.fetchTextIfAvailable(translatedContentPath);
+            if (!raw) {
+                return '';
+            }
+
+            return this.extractMarkdownTitle(raw) || '';
+        } catch (error) {
+            return '';
+        }
+    }
+
+    async showPost(postId, updateUrl = true) {
         if (this.explanationsReady) {
             await this.explanationsReady;
         }
 
         let post = this.posts.find(p => p.id === postId);
 
-        if (post && (!post.content || post.folder || post.source_folder || post.directory)) {
+        if (post && (!post.content || this.resolvePostFolderPath(post))) {
             try {
                 const loadedPost = await this.loadPostFromSource(post);
                 if (loadedPost) {
@@ -520,7 +806,7 @@ class BlogApp {
 
         this.currentPost = post;
         this.renderPost(post);
-        this.navigateToPost(postId);
+        this.navigateToPost(postId, updateUrl);
     }
 
     setupTranslateButton(post) {
@@ -559,11 +845,10 @@ class BlogApp {
                         throw new Error(`Could not load translation: ${response.status}`);
                     }
                     const raw = await response.text();
-                    const parsed = this.parseMarkdownPost(raw, post.id);
-                    post.translatedContent = parsed.content;
+                    post.translatedContent = raw;
 
                     if (!post.title_english) {
-                        post.title_english = parsed.title || post.title;
+                        post.title_english = this.extractMarkdownTitle(raw) || post.title;
                     }
 
                     post.isEnglish = true;
@@ -627,7 +912,7 @@ class BlogApp {
                 el.classList.add('active');
 
                 const imageHtml = entry.image
-                    ? `<img class="explain-card-image" src="${this.escapeHtml(this.resolveExplanationImage(post, entry.image))}" alt="${this.escapeHtml(entry[language] || entry.title || '')}"/>`
+                    ? `<img class="explain-card-image" src="${this.escapeHtml(this.resolveExplanationImage(post, entry.image))}" alt="${this.escapeHtml(entry[language] || entry.title || '')}" draggable="false"/>`
                     : '';
                 const text = this.escapeHtml(entry[language] || 'No explanation found');
 
@@ -670,48 +955,11 @@ class BlogApp {
     }
 
     parseMarkdownPost(content, postId) {
-        const lines = content.split('\n');
-        let title = '';
-        let date = new Date().toISOString();
-        let image = '';
-        let author = 'Admin';
-        
-        if (lines[0].startsWith('---')) {
-            let i = 1;
-            while (i < lines.length && !lines[i].startsWith('---')) {
-                const line = lines[i];
-                if (line.startsWith('title:')) {
-                    title = line.substring(6).trim().replace(/['"]/g, '');
-                } else if (line.startsWith('date:')) {
-                    date = line.substring(5).trim();
-                } else if (line.startsWith('image:')) {
-                    image = line.substring(6).trim();
-                } else if (line.startsWith('author:')) {
-                    author = line.substring(7).trim();
-                }
-                i++;
-            }
-            content = lines.slice(i + 1).join('\n');
-        }
-
-        if (!title) {
-            const titleMatch = content.match(/^#\s+(.+)$/m);
-            if (titleMatch) {
-                title = titleMatch[1];
-                content = content.replace(/^#\s+.+$/m, '');
-            }
-        }
-
-        const excerpt = this.generateExcerpt(content);
-
         return {
             id: postId,
-            title: title || 'Untitled Post',
+            title: this.extractMarkdownTitle(content) || 'Untitled Post',
             content: content,
-            excerpt: excerpt,
-            date: date,
-            image: image,
-            author: author
+            excerpt: this.generateExcerpt(content)
         };
     }
 
@@ -731,9 +979,10 @@ class BlogApp {
     renderPost(post) {
         const postTitleElement = document.getElementById('post-title');
         const isEnglish = post.isEnglish;
-        postTitleElement.textContent = isEnglish
+        const baseTitle = isEnglish
             ? (post.title_english || post.title)
             : post.title;
+        postTitleElement.textContent = this.getDisplayTitle(post, baseTitle, this.currentTopic);
         
         // Add hr after title if it doesn't exist
         const nextEl = postTitleElement.nextElementSibling;
@@ -746,23 +995,52 @@ class BlogApp {
             ? (post.translatedContent || post.content)
             : post.content;
 
-        const annotatedContent = this.applyExplanations(contentToRender, isEnglish ? 'english' : 'tamil', post);
-        const renderedContent = marked.parse(annotatedContent);
-        document.getElementById('post-content').innerHTML = this.rewriteRelativePaths(
-            renderedContent,
-            post.assetBasePath || post.folder || post.source_folder || post.directory || ''
-        );
+        const postContentElement = document.getElementById('post-content');
+        const isPoem = this.getPostCategory(post) === 'kavithaigal';
+
+        if (isPoem) {
+            postContentElement.innerHTML = this.renderRawMarkdownWithImages(
+                contentToRender,
+                post.assetBasePath || this.resolvePostFolderPath(post) || ''
+            );
+        } else {
+            const annotatedContent = this.applyExplanations(contentToRender, isEnglish ? 'english' : 'tamil', post);
+            const renderedContent = marked.parse(annotatedContent);
+            postContentElement.innerHTML = this.rewriteRelativePaths(
+                renderedContent,
+                post.assetBasePath || this.resolvePostFolderPath(post) || ''
+            );
+            this.setupExplanationLinks(isEnglish ? 'english' : 'tamil', post);
+        }
 
         this.setupTranslateButton(post);
-        this.setupExplanationLinks(isEnglish ? 'english' : 'tamil', post);
+        const explainCard = document.getElementById('explain-card');
+        if (explainCard) {
+            explainCard.hidden = true;
+            explainCard.classList.remove('visible');
+        }
         this.initGiscus();
         
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.getElementById('post-page').classList.add('active');
     }
 
-    navigateToPost(postId) {
-        window.location.hash = `post/${postId}`;
+    renderRawMarkdownWithImages(content, basePath) {
+        const raw = String(content ?? '');
+        const imagePattern = /^!\[([^\]]*)\]\(([^)]+)\)\s*$/gm;
+        const normalizedBase = this.normalizeFolderPath(basePath);
+        const escapedText = this.escapeHtml(raw);
+
+        return escapedText.replace(imagePattern, (_, alt, src) => {
+            const resolvedSrc = this.resolveRelativePath(normalizedBase, src);
+            return `<img class="post-inline-image" src="${this.escapeHtml(resolvedSrc)}" alt="${this.escapeHtml(alt)}" loading="lazy" decoding="async" draggable="false">`;
+        }).replace(/\n/g, '<br>');
+    }
+
+    navigateToPost(postId, updateUrl = true) {
+        if (updateUrl) {
+            this.updateBrowserPath(`/post/${encodeURIComponent(postId)}`);
+        }
         
         document.querySelectorAll('.nav-link').forEach(link => {
             link.classList.remove('active');
@@ -826,8 +1104,3 @@ window.addEventListener('popstate', () => {
     }
 });
 
-window.addEventListener('hashchange', () => {
-    if (blogApp) {
-        blogApp.handleRouting();
-    }
-});

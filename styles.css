@@ -61,6 +61,9 @@ select {
     max-height: 300px;
     transition: transform 0.3s ease;
     filter: drop-shadow(0 4px 8px rgba(45, 90, 45, 0.2));
+    user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
 }
 
 .hero-logo:hover {
@@ -164,6 +167,42 @@ select {
     gap: 2vw;
 }
 
+.posts-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1.5vw;
+    margin-top: 3vw;
+    flex-wrap: wrap;
+}
+
+.pagination-btn {
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #000000;
+    border-radius: 999px;
+    padding: 0.8vw 1.6vw;
+    font-family: inherit;
+    font-size: 1vw;
+    cursor: pointer;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.pagination-status {
+    font-size: 1vw;
+    color: #000000;
+    font-weight: 600;
+}
+
 .post-card {
     background: white;
     border-radius: 1vw;
@@ -180,6 +219,9 @@ select {
     width: 100%;
     height: 20vw;
     object-fit: cover;
+    user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
 }
 
 .post-card-content {
@@ -353,6 +395,9 @@ select {
     height: 100%;
     object-fit: contain;
     display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
 }
 
 .translate-btn:hover {
@@ -421,6 +466,9 @@ select {
     height: auto;
     border-radius: 0.5vw;
     margin: 1.5vw 0;
+    user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
 }
 
 .post-content blockquote {
@@ -717,6 +765,20 @@ select {
     .posts-grid {
         grid-template-columns: 1fr;
         gap: 3vw;
+    }
+
+    .posts-pagination {
+        gap: 3vw;
+        margin-top: 6vw;
+    }
+
+    .pagination-btn,
+    .pagination-status {
+        font-size: 3.2vw;
+    }
+
+    .pagination-btn {
+        padding: 2.5vw 4vw;
     }
     
     .post-card-image {
