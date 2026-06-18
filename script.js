@@ -3,9 +3,11 @@ class BlogApp {
         this.posts = [];
         this.currentPost = null;
         this.comments = {};
-        this.currentTopic = 'all';
-        this.explanations = {};
+        this.currentTopic = 'ellam';
+        this.explanations = [];
+        this.explanationIndex = new Map();
         this.activeExplanations = {};
+        this.translationAvailability = new Map();
         
         this.init();
     }
@@ -14,8 +16,8 @@ class BlogApp {
         this.loadData();
         this.setupEventListeners();
         this.handleRouting();
+        this.explanationsReady = this.loadExplanations();
         this.loadPosts();
-        this.loadExplanations();
     }
 
     loadData() {
@@ -41,28 +43,274 @@ class BlogApp {
             const response = await fetch('explanations.json');
             if (response.ok) {
                 const data = await response.json();
-
-                if (Array.isArray(data)) {
-                    this.explanations = data;
-                } else if (data && typeof data === 'object') {
-                    // Backward compatibility for the older keyed-object format.
-                    this.explanations = Object.entries(data)
-                        .filter(([, value]) => value && typeof value === 'object')
-                        .map(([key, value]) => ({
-                            words: key.split('|').map(word => word.trim()).filter(Boolean),
-                            ...value
-                        }));
-                } else {
-                    this.explanations = [];
-                }
+                this.explanations = this.normalizeExplanations(data);
+                this.explanationIndex = this.buildExplanationIndex(this.explanations);
             } else {
                 console.warn('Could not load explanations.json:', response.status);
                 this.explanations = [];
+                this.explanationIndex = new Map();
             }
         } catch (error) {
             console.warn('Error loading explanations.json:', error);
             this.explanations = [];
+            this.explanationIndex = new Map();
         }
+    }
+
+    normalizeExplanations(data) {
+        const rawEntries = Array.isArray(data)
+            ? data
+            : (data && typeof data === 'object'
+                ? Object.entries(data)
+                    .filter(([, value]) => value && typeof value === 'object')
+                    .map(([key, value]) => ({
+                        aliases: key.split('|').map(word => word.trim()).filter(Boolean),
+                        ...value
+                    }))
+                : []);
+
+        return rawEntries
+            .filter(entry => entry && typeof entry === 'object')
+            .map((entry, index) => {
+                const aliases = Array.isArray(entry.aliases)
+                    ? entry.aliases
+                    : Array.isArray(entry.words)
+                        ? entry.words
+                        : [];
+                const normalizedAliases = aliases
+                    .filter(alias => typeof alias === 'string')
+                    .map(alias => alias.trim())
+                    .filter(Boolean);
+                const title = typeof entry.title === 'string' && entry.title.trim()
+                    ? entry.title.trim()
+                    : normalizedAliases[0] || `Explanation ${index + 1}`;
+                const id = typeof entry.id === 'string' && entry.id.trim()
+                    ? entry.id.trim()
+                    : this.slugifyTerm(title);
+
+                return {
+                    ...entry,
+                    id,
+                    title,
+                    aliases: normalizedAliases,
+                    words: normalizedAliases
+                };
+            });
+    }
+
+    buildExplanationIndex(entries = []) {
+        const index = new Map();
+
+        for (const entry of entries) {
+            const lookupTerms = [entry.title, ...(entry.aliases || []), ...(entry.words || [])]
+                .filter(term => typeof term === 'string')
+                .map(term => this.normalizeTerm(term))
+                .filter(Boolean);
+
+            for (const term of lookupTerms) {
+                if (!index.has(term)) {
+                    index.set(term, entry);
+                }
+            }
+        }
+
+        return index;
+    }
+
+    normalizeTerm(term) {
+        return String(term ?? '')
+            .normalize('NFKC')
+            .toLocaleLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    normalizeFolderPath(folder) {
+        return String(folder ?? '')
+            .trim()
+            .replace(/^\.?\//, '')
+            .replace(/\/+$/, '');
+    }
+
+    isExternalUrl(value) {
+        return /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|data:|mailto:|javascript:)/i.test(String(value ?? ''));
+    }
+
+    resolveRelativePath(basePath, assetPath) {
+        const cleanPath = String(assetPath ?? '').trim();
+        if (!cleanPath || this.isExternalUrl(cleanPath) || cleanPath.startsWith('/')) {
+            return cleanPath;
+        }
+
+        const normalizedBase = this.normalizeFolderPath(basePath);
+        if (!normalizedBase || cleanPath.startsWith('static/')) {
+            return cleanPath;
+        }
+
+        return `${normalizedBase}/${cleanPath.replace(/^\.?\//, '')}`;
+    }
+
+    resolvePostContentPath(post) {
+        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        if (folder) {
+            return `${folder}/content.md`;
+        }
+
+        return `posts/${post.id}.md`;
+    }
+
+    resolvePostTranslationPath(post) {
+        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        const translationPath = post.translated_content || post.translation_content || (folder ? 'translation.md' : '');
+
+        if (!translationPath) {
+            return '';
+        }
+
+        return this.resolveRelativePath(folder, translationPath);
+    }
+
+    async resourceExists(path) {
+        if (!path) {
+            return false;
+        }
+
+        try {
+            let response = await fetch(path, { method: 'HEAD' });
+            if (response.ok) {
+                return true;
+            }
+
+            if (response.status === 405 || response.status === 501) {
+                response = await fetch(path);
+                return response.ok;
+            }
+        } catch (error) {
+            return false;
+        }
+
+        return false;
+    }
+
+    async annotatePostsWithTranslationStatus(posts = []) {
+        await Promise.all(posts.map(async (post) => {
+            const translationPath = this.resolvePostTranslationPath(post);
+            post.translationPath = translationPath;
+
+            if (!translationPath) {
+                post.hasTranslation = false;
+                return;
+            }
+
+            if (this.translationAvailability.has(translationPath)) {
+                post.hasTranslation = this.translationAvailability.get(translationPath);
+                return;
+            }
+
+            const exists = await this.resourceExists(translationPath);
+            this.translationAvailability.set(translationPath, exists);
+            post.hasTranslation = exists;
+        }));
+    }
+
+    resolvePostImage(post, imagePath) {
+        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        return this.resolveRelativePath(folder, imagePath);
+    }
+
+    resolveExplanationImage(post, imagePath) {
+        const cleanPath = String(imagePath ?? '').trim();
+        if (!cleanPath) {
+            return '';
+        }
+
+        if (this.isExternalUrl(cleanPath) || cleanPath.startsWith('/')) {
+            return cleanPath;
+        }
+
+        const folder = this.normalizeFolderPath(post?.folder || post?.source_folder || post?.directory);
+        if (folder) {
+            const relativePath = cleanPath.startsWith('images/') ? cleanPath : `images/${cleanPath}`;
+            return this.resolveRelativePath(folder, relativePath);
+        }
+
+        if (cleanPath.startsWith('static/') || cleanPath.startsWith('images/')) {
+            return cleanPath;
+        }
+
+        return `static/explanation_images/${cleanPath}`;
+    }
+
+    async fetchTextIfAvailable(path) {
+        try {
+            const response = await fetch(path);
+            if (response.ok) {
+                return await response.text();
+            }
+        } catch (error) {
+            return null;
+        }
+
+        return null;
+    }
+
+    async loadPostExplanations(post) {
+        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        let mergedEntries = [];
+
+        if (folder) {
+            const rawFolderExplanations = await this.fetchTextIfAvailable(`${folder}/explanations.json`);
+            if (rawFolderExplanations) {
+                try {
+                    const parsedFolder = JSON.parse(rawFolderExplanations);
+                    mergedEntries = this.normalizeExplanations(parsedFolder);
+                } catch (error) {
+                    console.warn(`Error loading ${folder}/explanations.json:`, error);
+                }
+            }
+        }
+
+        mergedEntries = mergedEntries.concat(this.explanations);
+        return {
+            entries: mergedEntries,
+            index: this.buildExplanationIndex(mergedEntries)
+        };
+    }
+
+    rewriteRelativePaths(html, basePath) {
+        const normalizedBase = this.normalizeFolderPath(basePath);
+        if (!normalizedBase) {
+            return html;
+        }
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<body>${html}</body>`, 'text/html');
+
+        doc.querySelectorAll('img[src]').forEach((img) => {
+            const src = img.getAttribute('src') || '';
+            const resolved = this.resolveRelativePath(normalizedBase, src);
+            img.setAttribute('src', resolved);
+        });
+
+        doc.querySelectorAll('source[src]').forEach((source) => {
+            const src = source.getAttribute('src') || '';
+            const resolved = this.resolveRelativePath(normalizedBase, src);
+            source.setAttribute('src', resolved);
+        });
+
+        doc.querySelectorAll('a[href]').forEach((anchor) => {
+            const href = anchor.getAttribute('href') || '';
+            const resolved = this.resolveRelativePath(normalizedBase, href);
+            anchor.setAttribute('href', resolved);
+        });
+
+        return doc.body.innerHTML;
+    }
+
+    slugifyTerm(term) {
+        return this.normalizeTerm(term)
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'explanation';
     }
 
     setupEventListeners() {
@@ -74,15 +322,50 @@ class BlogApp {
             });
         });
 
-        document.querySelectorAll('.topic-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+        const topicsContainer = document.getElementById('topics');
+        if (topicsContainer) {
+            topicsContainer.addEventListener('click', (e) => {
+                const btn = e.target.closest('.topic-btn');
+                if (!btn || !topicsContainer.contains(btn)) return;
+
                 const topic = btn.dataset.topic;
                 this.filterByTopic(topic);
-                
-                document.querySelectorAll('.topic-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
             });
+        }
+    }
+
+    renderTopics() {
+        const topicsContainer = document.getElementById('topics');
+        if (!topicsContainer) return;
+
+        const topicLabels = {
+            ellam: 'எல்லாம்',
+            kathaigal: 'கதைகள்',
+            verchchol: 'வேர்ச்சொல்',
+            katturaigal: 'கட்டுரைகள்',
+            kavidhaigal: 'கவிதைகள்'
+        };
+
+        const availableTopics = Object.keys(topicLabels).filter(topic =>
+            topic !== 'ellam' && this.posts.some(post => post.category === topic)
+        );
+
+        if (this.currentTopic !== 'ellam' && !availableTopics.includes(this.currentTopic)) {
+            this.currentTopic = 'ellam';
+        }
+
+        const topicButtons = [
+            `<button class="topic-btn${this.currentTopic === 'ellam' ? ' active' : ''}" data-topic="ellam">${topicLabels.ellam}</button>`
+        ];
+
+        availableTopics.forEach(topic => {
+            topicButtons.push('<span class="topic-separator">◇</span>');
+            topicButtons.push(
+                `<button class="topic-btn${this.currentTopic === topic ? ' active' : ''}" data-topic="${topic}">${topicLabels[topic]}</button>`
+            );
         });
+
+        topicsContainer.innerHTML = topicButtons.join('');
     }
 
     handleRouting() {
@@ -130,11 +413,14 @@ class BlogApp {
             console.log('Using default posts or local storage data');
         }
 
+        await this.annotatePostsWithTranslationStatus(this.posts);
+        this.renderTopics();
         this.renderPosts();
     }
 
     filterByTopic(topic) {
         this.currentTopic = topic;
+        this.renderTopics();
         this.renderPosts();
     }
 
@@ -142,54 +428,81 @@ class BlogApp {
         const postsGrid = document.getElementById('posts-grid');
         
         if (this.posts.length === 0) {
-            postsGrid.innerHTML = '<div class="loading">No posts available</div>';
+            postsGrid.innerHTML = '<div class="empty-state">No posts available</div>';
             return;
         }
 
         // Sort posts by date in descending order (newest first)
         const sortedPosts = [...this.posts].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        const filteredPosts = this.currentTopic === 'all' 
+        const filteredPosts = this.currentTopic === 'ellam' 
             ? sortedPosts 
             : sortedPosts.filter(post => post.category === this.currentTopic);
 
         if (filteredPosts.length === 0) {
-            postsGrid.innerHTML = '<div class="loading">No posts in this category yet</div>';
+            postsGrid.innerHTML = '<div class="empty-state">பதிவுகள் இல்லை</div>';
             return;
         }
 
         postsGrid.innerHTML = filteredPosts.map(post => `
             <div class="post-card" onclick="blogApp.showPost('${post.id}')">
-                ${post.image ? `<img src="${post.image}" alt="${post.title}" class="post-card-image">` : ''}
+                ${this.resolvePostImage(post, post.image) ? `<img src="${this.escapeHtml(this.resolvePostImage(post, post.image))}" alt="${this.escapeHtml(post.title)}" class="post-card-image">` : ''}
                 <div class="post-card-content">
                     <h3>${post.title}</h3>
-                    <p>${post.excerpt}</p>
                     <div class="post-card-meta">
-                        <span>${new Date(post.date).toLocaleDateString()}</span>
+                        <span class="post-card-date">${new Date(post.date).toLocaleDateString()}</span>
+                        <span class="post-card-language">${post.hasTranslation ? 'தமிழ் & English' : 'தமிழ்'}</span>
                     </div>
                 </div>
             </div>
         `).join('');
     }
 
+    async loadPostFromSource(post) {
+        const contentPath = this.resolvePostContentPath(post);
+        let content = await this.fetchTextIfAvailable(contentPath);
+
+        if (!content && !this.normalizeFolderPath(post.folder || post.source_folder || post.directory)) {
+            content = await this.fetchTextIfAvailable(`https://raw.githubusercontent.com/arihara-sudhan/blog/main/posts/${post.id}.md`);
+        }
+
+        if (!content) {
+            return null;
+        }
+
+        const parsedPost = this.parseMarkdownPost(content, post.id);
+        const folder = this.normalizeFolderPath(post.folder || post.source_folder || post.directory);
+        const postExplanations = await this.loadPostExplanations(post);
+        const translatedContentPath = this.resolvePostTranslationPath(post);
+        const resolvedTitle = parsedPost.title && parsedPost.title !== 'Untitled Post'
+            ? parsedPost.title
+            : post.title;
+
+        return {
+            ...post,
+            ...parsedPost,
+            title: resolvedTitle || parsedPost.title,
+            folder,
+            image: parsedPost.image || post.image || '',
+            assetBasePath: folder,
+            translated_content: translatedContentPath || post.translated_content,
+            explanationIndex: postExplanations.index,
+            explanations: postExplanations.entries
+        };
+    }
+
     async showPost(postId) {
+        if (this.explanationsReady) {
+            await this.explanationsReady;
+        }
+
         let post = this.posts.find(p => p.id === postId);
-        
-        if (post && !post.content) {
+
+        if (post && (!post.content || post.folder || post.source_folder || post.directory)) {
             try {
-                // Try local file first, fallback to GitHub
-                let response = await fetch(`posts/${postId}.md`);
-                if (!response.ok) {
-                    response = await fetch(`https://raw.githubusercontent.com/arihara-sudhan/blog/main/posts/${postId}.md`);
-                }
-                if (response.ok) {
-                    const content = await response.text();
-                    const parsedPost = this.parseMarkdownPost(content, postId);
-        
-                    post.content = parsedPost.content;
-                    post.date = parsedPost.date || post.date;
-                    post.author = parsedPost.author || post.author;
-                    post.image = parsedPost.image || post.image;
+                const loadedPost = await this.loadPostFromSource(post);
+                if (loadedPost) {
+                    post = loadedPost;
                 }
             } catch (error) {
                 console.error('Error loading post:', error);
@@ -234,13 +547,14 @@ class BlogApp {
                     return;
                 }
 
-                if (!post.translated_content) {
+                const translatedSource = post.translationPath || this.resolvePostTranslationPath(post) || post.translated_content || post.translation_content;
+                if (!translatedSource) {
                     alert('Translation source not available for this post yet.');
                     return;
                 }
 
                 try {
-                    const response = await fetch(post.translated_content);
+                    const response = await fetch(translatedSource);
                     if (!response.ok) {
                         throw new Error(`Could not load translation: ${response.status}`);
                     }
@@ -268,29 +582,19 @@ class BlogApp {
     }
 
     applyExplanations(content, language, post) {
-        const entries = Array.isArray(this.explanations) ? this.explanations : [];
         this.activeExplanations = {};
         let explanationIndex = 0;
-
-        const normalizedEntries = entries.filter(entry =>
-            entry &&
-            typeof entry === 'object' &&
-            Array.isArray(entry.words)
-        );
+        const explanationIndexMap = post?.explanationIndex || this.explanationIndex;
 
         return content.replace(/<qn>([\s\S]*?)<\/qn>/gu, (_, rawTerm) => {
             const target = rawTerm.trim();
             if (!target) return rawTerm;
 
-            const entry = normalizedEntries.find(item =>
-                item.words.some(word =>
-                    typeof word === 'string' &&
-                    word.trim().localeCompare(target, undefined, { sensitivity: 'accent' }) === 0
-                )
-            );
+            const normalizedTarget = this.normalizeTerm(target);
+            const entry = explanationIndexMap?.get(normalizedTarget) || null;
 
             if (!entry) {
-                return target;
+                return this.escapeHtml(target);
             }
 
             const explanationId = `expl-${explanationIndex++}`;
@@ -300,11 +604,11 @@ class BlogApp {
                 _target: target
             };
 
-            return `<span class="expl-term" data-expl-id="${explanationId}">${target}<sup>?</sup></span>`;
+            return `<span class="expl-term" data-expl-id="${this.escapeHtml(explanationId)}">${this.escapeHtml(target)}<sup>?</sup></span>`;
         });
     }
 
-    setupExplanationLinks(language) {
+    setupExplanationLinks(language, post) {
         const explainCard = document.getElementById('explain-card');
         const explainCardContent = document.getElementById('explain-card-content');
         const closeBtn = document.getElementById('explain-card-close');
@@ -322,8 +626,10 @@ class BlogApp {
                 document.querySelectorAll('.expl-term').forEach(x => x.classList.remove('active'));
                 el.classList.add('active');
 
-                const imageHtml = entry.image ? `<img class="explain-card-image" src="static/explanation_images/${entry.image}" alt="${entry[language]||''}"/>` : '';
-                const text = entry[language] || 'No explanation found';
+                const imageHtml = entry.image
+                    ? `<img class="explain-card-image" src="${this.escapeHtml(this.resolveExplanationImage(post, entry.image))}" alt="${this.escapeHtml(entry[language] || entry.title || '')}"/>`
+                    : '';
+                const text = this.escapeHtml(entry[language] || 'No explanation found');
 
                 explainCardContent.innerHTML = `${imageHtml}<p>${text}</p>`;
                 explainCard.hidden = false;
@@ -441,10 +747,14 @@ class BlogApp {
             : post.content;
 
         const annotatedContent = this.applyExplanations(contentToRender, isEnglish ? 'english' : 'tamil', post);
-        document.getElementById('post-content').innerHTML = marked.parse(annotatedContent);
+        const renderedContent = marked.parse(annotatedContent);
+        document.getElementById('post-content').innerHTML = this.rewriteRelativePaths(
+            renderedContent,
+            post.assetBasePath || post.folder || post.source_folder || post.directory || ''
+        );
 
         this.setupTranslateButton(post);
-        this.setupExplanationLinks(isEnglish ? 'english' : 'tamil');
+        this.setupExplanationLinks(isEnglish ? 'english' : 'tamil', post);
         this.initGiscus();
         
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));

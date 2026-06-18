@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@font-face {
+    font-family: 'Pandora Sans';
+    src: url('static/font.TTF') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
 
 * {
     margin: 0;
@@ -7,10 +13,17 @@
 }
 
 body {
-    font-family: Helvetica, Arial, sans-serif;
+    font-family: 'Pandora Sans', sans-serif;
     line-height: 1.6;
     color: #000000;
     background-color: #ffffff;
+}
+
+button,
+input,
+textarea,
+select {
+    font-family: inherit;
 }
 
 .container {
@@ -96,7 +109,7 @@ body {
 }
 
 .hero h2 {
-    font-family: "Playfair Display", serif;
+    font-family: inherit;
     font-size: 4vw;
     font-weight: 600;
     color: #000000;
@@ -131,7 +144,7 @@ body {
     border: none;
     padding: 0;
     cursor: pointer;
-    font-family: Helvetica, Arial, sans-serif;
+    font-family: inherit;
     font-size: 1vw;
     text-decoration: none;
     font-weight: normal;
@@ -174,7 +187,7 @@ body {
 }
 
 .post-card h3 {
-    font-family: "Playfair Display", serif;
+    font-family: inherit;
     font-size: 1.8vw;
     margin-bottom: 1vw;
     color: #000000;
@@ -198,6 +211,14 @@ body {
     align-items: center;
     font-size: 1vw;
     color: #999;
+    gap: 1vw;
+}
+
+.post-card-language {
+    white-space: nowrap;
+    color: inherit;
+    font-weight: inherit;
+    opacity: 1;
 }
 
 .post-card-actions {
@@ -341,7 +362,7 @@ body {
 
 
 #post-title {
-    font-family: "Playfair Display", serif;
+    font-family: inherit;
     font-size: 3vw;
     color: #000000;
     line-height: 1.3;
@@ -379,7 +400,7 @@ body {
 .post-content h4,
 .post-content h5,
 .post-content h6 {
-    font-family: Helvetica, Arial, sans-serif;
+    font-family: inherit;
     color: #000000;
     margin: 2vw 0 1vw 0;
     font-weight: 600;
@@ -478,7 +499,7 @@ body {
 }
 
 .comments-section h3 {
-    font-family: Helvetica, Arial, sans-serif;
+    font-family: inherit;
     font-size: 2vw;
     color: #000000;
     margin-bottom: 2vw;
@@ -584,7 +605,7 @@ body {
 }
 
 #about-page h2 {
-    font-family: "Playfair Display", serif;
+    font-family: inherit;
     font-size: 2.5vw;
     color: #000000;
     margin-bottom: 2vw;
@@ -611,7 +632,7 @@ body {
 }
 
 .footer a {
-    color: #4a7c4a;
+    color: #000000;
     text-decoration: none;
     font-weight: 500;
 }
@@ -621,7 +642,7 @@ body {
 }
 
 .footer-blog-link {
-    color: #4a7c4a;
+    color: #000000;
     text-decoration: none;
     font-weight: 500;
     transition: all 0.3s ease;
@@ -713,6 +734,10 @@ body {
     
     .post-card-meta {
         font-size: 3.5vw;
+    }
+
+    .post-card-language {
+        font-size: 3vw;
     }
     
     #post-title {
@@ -856,6 +881,13 @@ body {
 }
 
 .loading {
+    text-align: center;
+    padding: 4vw;
+    color: #000000;
+    font-size: 1.2vw;
+}
+
+.empty-state {
     text-align: center;
     padding: 4vw;
     color: #000000;

@@ -1,3 +1,0 @@
-I sang "Twinkle Twinkle Little Star" and my friend sang along with me at the same time. The words were the same, the tone was the same, and we can even say the frequency and loudness were the same. But his voice sounded different from mine. So the question is: why didn't I sound like him? What distinguishes one voice from another?
-
-The answer is timbre. Whether it's two people singing or a flute and a nadaswaram, even though they produce sound at the same pitch, they sound different from each other. The reason is timbre. It is a fundamental characteristic of a sound wave. But what exactly is timbre? Many sources offer vague definitions like "sound color" or "sound quality", but what does that actually mean?
