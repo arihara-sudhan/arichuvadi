@@ -3,6 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        (function () {
+            const segments = window.location.pathname.split('/').filter(Boolean);
+            const appRoutes = new Set(['about', 'all', 'katturaigal', 'kavithaigal', 'post']);
+            const hasRepoPrefix = segments.length > 1 && !appRoutes.has(segments[0]);
+            const baseHref = hasRepoPrefix ? `/${segments[0]}/` : '/';
+            document.write(`<base href="${baseHref}">`);
+        }());
+    </script>
     <title>அரிச்சுவடி</title>
     <link rel="icon" href="static/logo.png" type="image/png">
     <link rel="stylesheet" href="styles.css">
@@ -57,7 +66,7 @@
 
     <footer class="footer">
         <div class="container">
-<p>&copy; 2024 <a href="/all" onclick="blogApp.filterByTopic('ellam'); return false;" class="footer-blog-link">அரிச்சுவடி</a> | <a href="https://arihara-sudhan.github.io/" target="_blank" rel="noopener noreferrer">A</a><a href="https://ariverse.in/" target="_blank" rel="noopener noreferrer">RIVERSE</a></p>
+<p>&copy; 2024 <a href="all" onclick="blogApp.filterByTopic('ellam'); return false;" class="footer-blog-link">அரிச்சுவடி</a> | <a href="https://arihara-sudhan.github.io/" target="_blank" rel="noopener noreferrer">A</a><a href="https://ariverse.in/" target="_blank" rel="noopener noreferrer">RIVERSE</a></p>
         </div>
     </footer>
 

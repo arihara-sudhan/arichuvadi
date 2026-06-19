@@ -11,8 +11,42 @@ class BlogApp {
         this.explanationIndex = new Map();
         this.activeExplanations = {};
         this.translationAvailability = new Map();
+        this.siteBasePath = this.detectSiteBasePath();
         
         this.init();
+    }
+
+    detectSiteBasePath() {
+        try {
+            const scriptUrl = document.currentScript?.src
+                || Array.from(document.scripts).find(script => script.src && script.src.includes('script.js'))?.src
+                || window.location.href;
+            const pathname = new URL(scriptUrl, window.location.href).pathname;
+            const basePath = pathname.slice(0, pathname.lastIndexOf('/') + 1) || '/';
+            return basePath.endsWith('/') ? basePath : `${basePath}/`;
+        } catch (error) {
+            return '/';
+        }
+    }
+
+    joinSitePath(path) {
+        const cleanPath = String(path ?? '').trim();
+        if (!cleanPath || this.isExternalUrl(cleanPath)) {
+            return cleanPath;
+        }
+
+        const siteBasePath = this.siteBasePath || '/';
+        const normalizedPath = cleanPath.replace(/^\/+/, '');
+
+        if (siteBasePath === '/') {
+            return `/${normalizedPath}`;
+        }
+
+        if (normalizedPath.startsWith(siteBasePath.replace(/^\/+/, ''))) {
+            return cleanPath.startsWith('/') ? cleanPath : `/${normalizedPath}`;
+        }
+
+        return `${siteBasePath}${normalizedPath}`;
     }
 
     init() {
@@ -185,16 +219,18 @@ class BlogApp {
 
     resolveRelativePath(basePath, assetPath) {
         const cleanPath = String(assetPath ?? '').trim();
-        if (!cleanPath || this.isExternalUrl(cleanPath) || cleanPath.startsWith('/') || cleanPath.startsWith('posts/')) {
+        if (!cleanPath || this.isExternalUrl(cleanPath)) {
             return cleanPath;
         }
+
+        const normalizedPath = cleanPath.replace(/^\/+/, '');
 
         const normalizedBase = this.normalizeFolderPath(basePath);
-        if (!normalizedBase || cleanPath.startsWith('static/')) {
-            return cleanPath;
+        if (!normalizedBase) {
+            return normalizedPath;
         }
 
-        return `${normalizedBase}/${cleanPath.replace(/^\.?\//, '')}`;
+        return `${normalizedBase}/${normalizedPath.replace(/^\.?\//, '')}`;
     }
 
     resolvePostContentPath(post) {
@@ -318,21 +354,23 @@ class BlogApp {
             return '';
         }
 
-        if (this.isExternalUrl(cleanPath) || cleanPath.startsWith('/')) {
+        if (this.isExternalUrl(cleanPath)) {
             return cleanPath;
         }
+
+        const normalizedPath = cleanPath.replace(/^\/+/, '');
 
         const folder = this.resolvePostFolderPath(post);
         if (folder) {
-            const relativePath = cleanPath.startsWith('images/') ? cleanPath : `images/${cleanPath}`;
+            const relativePath = normalizedPath.startsWith('images/') ? normalizedPath : `images/${normalizedPath}`;
             return this.resolveRelativePath(folder, relativePath);
         }
 
-        if (cleanPath.startsWith('static/') || cleanPath.startsWith('images/')) {
-            return cleanPath;
+        if (normalizedPath.startsWith('static/') || normalizedPath.startsWith('images/')) {
+            return normalizedPath;
         }
 
-        return `static/explanation_images/${cleanPath}`;
+        return `static/explanation_images/${normalizedPath}`;
     }
 
     async fetchTextIfAvailable(path) {
@@ -463,7 +501,11 @@ class BlogApp {
     }
 
     handleRouting() {
-        const path = window.location.pathname.replace(/\/+$/, '') || '/';
+        const pathname = window.location.pathname;
+        const relativePath = this.siteBasePath !== '/' && pathname.startsWith(this.siteBasePath)
+            ? `/${pathname.slice(this.siteBasePath.length)}`
+            : pathname;
+        const path = relativePath.replace(/\/+$/, '') || '/';
         const parts = path.split('/').filter(Boolean);
         const route = parts[0] || 'all';
 
@@ -489,7 +531,7 @@ class BlogApp {
         }
 
         if (path === '/') {
-            this.updateBrowserPath('/all', true);
+            this.updateBrowserPath('all', true);
         }
     }
 
@@ -503,14 +545,14 @@ class BlogApp {
 
     getTopicPath(topic) {
         if (!topic || topic === 'ellam') {
-            return '/all';
+            return 'all';
         }
 
-        return `/${topic}`;
+        return topic;
     }
 
     updateBrowserPath(path, replace = false) {
-        const nextPath = path.startsWith('/') ? path : `/${path}`;
+        const nextPath = this.joinSitePath(path);
         if (replace) {
             window.history.replaceState({ path: nextPath }, '', nextPath);
         } else {
@@ -537,7 +579,7 @@ class BlogApp {
         } else if (page === 'about') {
             document.getElementById('about-page').classList.add('active');
             if (updateUrl) {
-                this.updateBrowserPath('/about');
+                this.updateBrowserPath('about');
             }
         }
     }
@@ -545,7 +587,7 @@ class BlogApp {
     async loadPosts() {
         try {
             const response = await fetch('posts.json');
-        if (response.ok) {
+            if (response.ok) {
                 const postsData = await response.json();
                 this.posts = postsData.posts;
                 this.saveData();
@@ -1039,7 +1081,7 @@ class BlogApp {
 
     navigateToPost(postId, updateUrl = true) {
         if (updateUrl) {
-            this.updateBrowserPath(`/post/${encodeURIComponent(postId)}`);
+            this.updateBrowserPath(`post/${encodeURIComponent(postId)}`);
         }
         
         document.querySelectorAll('.nav-link').forEach(link => {
