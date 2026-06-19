@@ -52,6 +52,9 @@ class BlogApp {
     init() {
         this.loadData();
         this.setupEventListeners();
+        window.addEventListener('hashchange', () => {
+            this.handleRouting();
+        });
         window.addEventListener('popstate', () => {
             this.handleRouting();
         });
@@ -492,38 +495,67 @@ class BlogApp {
     }
 
     handleRouting() {
-        const pathname = window.location.pathname;
-        const relativePath = this.siteBasePath !== '/' && pathname.startsWith(this.siteBasePath)
-            ? `/${pathname.slice(this.siteBasePath.length)}`
-            : pathname;
-        const path = relativePath.replace(/\/+$/, '') || '/';
-        const parts = path.split('/').filter(Boolean);
-        const route = parts[0] || 'all';
+        const parsedHash = this.parseRoute(window.location.hash);
+        const parsedPath = parsedHash ? null : this.parseRouteFromPath(window.location.pathname);
+        const routeInfo = parsedHash || parsedPath || { route: 'all', parts: [] };
+        const { route, parts } = routeInfo;
+        let canonicalPath = null;
 
         if (route === 'post' && parts[1]) {
             const postId = decodeURIComponent(parts.slice(1).join('/'));
             this.showPost(postId, false);
-            return;
-        }
-
-        if (route === 'about') {
+            canonicalPath = `post/${encodeURIComponent(postId)}`;
+        } else if (route === 'about') {
             this.navigateToPage('about', false);
-            return;
+            canonicalPath = 'about';
+        } else {
+            const topic = this.normalizeRouteTopic(route);
+            this.currentTopic = topic;
+            this.currentPage = 1;
+            this.navigateToPage('home', false);
+
+            if (this.posts.length > 0) {
+                this.renderTopics();
+                this.renderPosts();
+            }
+
+            canonicalPath = this.getTopicPath(this.currentTopic || 'ellam');
         }
 
-        const topic = this.normalizeRouteTopic(route);
-        this.currentTopic = topic;
-        this.currentPage = 1;
-        this.navigateToPage('home', false);
+        if (!parsedHash && canonicalPath) {
+            this.updateBrowserPath(canonicalPath, true);
+        }
+    }
 
-        if (this.posts.length > 0) {
-            this.renderTopics();
-            this.renderPosts();
+    parseRoute(hash) {
+        const cleanHash = String(hash ?? '').replace(/^#\/?/, '').replace(/^\/+/, '').replace(/\/+$/, '');
+        if (!cleanHash) {
+            return null;
         }
 
-        if (path === '/') {
-            this.updateBrowserPath('all', true);
+        const parts = cleanHash.split('/').filter(Boolean);
+        return {
+            route: parts[0] || 'all',
+            parts
+        };
+    }
+
+    parseRouteFromPath(pathname) {
+        const cleanPath = String(pathname ?? '').replace(/\/+$/, '');
+        const basePath = String(this.siteBasePath ?? '/').replace(/\/+$/, '');
+        const path = basePath !== '/' && cleanPath.startsWith(basePath)
+            ? cleanPath.slice(basePath.length)
+            : cleanPath;
+        const parts = path.split('/').filter(Boolean);
+
+        if (parts.length === 0) {
+            return null;
         }
+
+        return {
+            route: parts[0],
+            parts
+        };
     }
 
     normalizeRouteTopic(route) {
@@ -543,11 +575,13 @@ class BlogApp {
     }
 
     updateBrowserPath(path, replace = false) {
-        const nextPath = this.joinSitePath(path);
+        const normalizedPath = String(path ?? '').trim().replace(/^#\/?/, '').replace(/^\/+/, '');
+        const nextHash = normalizedPath ? `#${normalizedPath}` : '#all';
+        const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`;
         if (replace) {
-            window.history.replaceState({ path: nextPath }, '', nextPath);
+            window.history.replaceState({ path: nextHash }, '', nextUrl);
         } else {
-            window.history.pushState({ path: nextPath }, '', nextPath);
+            window.history.pushState({ path: nextHash }, '', nextUrl);
         }
     }
 
@@ -1129,11 +1163,5 @@ class BlogApp {
 let blogApp;
 document.addEventListener('DOMContentLoaded', () => {
     blogApp = new BlogApp();
-});
-
-window.addEventListener('popstate', () => {
-    if (blogApp) {
-        blogApp.handleRouting();
-    }
 });
 
