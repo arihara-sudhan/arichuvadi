@@ -79,22 +79,8 @@ class BlogApp {
     }
 
     async loadExplanations() {
-        try {
-            const response = await fetch('explanations.json');
-            if (response.ok) {
-                const data = await response.json();
-                this.explanations = this.normalizeExplanations(data);
-                this.explanationIndex = this.buildExplanationIndex(this.explanations);
-            } else {
-                console.warn('Could not load explanations.json:', response.status);
-                this.explanations = [];
-                this.explanationIndex = new Map();
-            }
-        } catch (error) {
-            console.warn('Error loading explanations.json:', error);
-            this.explanations = [];
-            this.explanationIndex = new Map();
-        }
+        this.explanations = [];
+        this.explanationIndex = new Map();
     }
 
     normalizeExplanations(data) {
@@ -224,23 +210,28 @@ class BlogApp {
         }
 
         const normalizedPath = cleanPath.replace(/^\/+/, '');
-
-        const normalizedBase = this.normalizeFolderPath(basePath);
-        if (!normalizedBase) {
-            return normalizedPath;
+        if (normalizedPath.startsWith('posts/') || normalizedPath.startsWith('static/')) {
+            return this.joinSitePath(normalizedPath);
         }
 
-        return `${normalizedBase}/${normalizedPath.replace(/^\.?\//, '')}`;
+        const normalizedBase = this.normalizeFolderPath(basePath);
+        const joinedPath = normalizedBase
+            ? `${normalizedBase}/${normalizedPath.replace(/^\.?\//, '')}`
+            : normalizedPath;
+
+        return this.joinSitePath(joinedPath);
     }
 
     resolvePostContentPath(post) {
         const folder = this.resolvePostFolderPath(post);
         if (folder) {
-            return `${folder}/content.md`;
+            return this.joinSitePath(`${folder}/content.md`);
         }
 
         const category = this.normalizeFolderPath(post?.category);
-        return category ? `posts/${category}/${post.id}.md` : `posts/${post.id}.md`;
+        return category
+            ? this.joinSitePath(`posts/${category}/${post.id}.md`)
+            : this.joinSitePath(`posts/${post.id}.md`);
     }
 
     resolvePostTranslationPath(post) {
@@ -260,13 +251,13 @@ class BlogApp {
         }
 
         try {
-            let response = await fetch(path, { method: 'HEAD' });
+            let response = await fetch(this.joinSitePath(path), { method: 'HEAD' });
             if (response.ok) {
                 return true;
             }
 
             if (response.status === 405 || response.status === 501) {
-                response = await fetch(path);
+                response = await fetch(this.joinSitePath(path));
                 return response.ok;
             }
         } catch (error) {
@@ -367,15 +358,15 @@ class BlogApp {
         }
 
         if (normalizedPath.startsWith('static/') || normalizedPath.startsWith('images/')) {
-            return normalizedPath;
+            return this.joinSitePath(normalizedPath);
         }
 
-        return `static/explanation_images/${normalizedPath}`;
+        return this.joinSitePath(`static/explanation_images/${normalizedPath}`);
     }
 
     async fetchTextIfAvailable(path) {
         try {
-            const response = await fetch(path);
+            const response = await fetch(this.joinSitePath(path));
             if (response.ok) {
                 return await response.text();
             }
@@ -391,7 +382,7 @@ class BlogApp {
         let mergedEntries = [];
 
         if (folder) {
-            const rawFolderExplanations = await this.fetchTextIfAvailable(`${folder}/explanations.json`);
+            const rawFolderExplanations = await this.fetchTextIfAvailable(this.joinSitePath(`${folder}/explanations.json`));
             if (rawFolderExplanations) {
                 try {
                     const parsedFolder = JSON.parse(rawFolderExplanations);
@@ -586,7 +577,7 @@ class BlogApp {
 
     async loadPosts() {
         try {
-            const response = await fetch('posts.json');
+            const response = await fetch(this.joinSitePath('posts.json'));
             if (response.ok) {
                 const postsData = await response.json();
                 this.posts = postsData.posts;
@@ -882,7 +873,7 @@ class BlogApp {
                 }
 
                 try {
-                    const response = await fetch(translatedSource);
+                    const response = await fetch(this.joinSitePath(translatedSource));
                     if (!response.ok) {
                         throw new Error(`Could not load translation: ${response.status}`);
                     }
